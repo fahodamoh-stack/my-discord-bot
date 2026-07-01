@@ -4,7 +4,7 @@ from discord.ext import commands
 from flask import Flask
 from threading import Thread
 
-# --- ويب سيرفر ---
+# --- ويب سيرفر للـ 24/7 ---
 app = Flask(__name__)
 @app.route('/')
 def home(): return "البوت شغال 24/7!"
@@ -13,13 +13,22 @@ Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
 intents = discord.Intents.default()
 bot = discord.Bot(intents=intents)
 
-# --- لوحة الأزرار ---
+# --- كلاس زرار القفل ---
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.red, custom_id="close_btn")
+    async def close(self, button, interaction):
+        await interaction.response.send_message("جاري إغلاق التذكرة...")
+        await interaction.channel.delete()
+
+# --- كلاس لوحة الأزرار الرئيسية ---
 class TicketPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     async def create_ticket(self, interaction, ticket_type):
-        # اسم الروم بالانجليزي
         channel_name = f"{ticket_type}-{interaction.user.name}"
         if discord.utils.get(interaction.guild.channels, name=channel_name):
             await interaction.response.send_message("❌ لديك تذكرة مفتوحة بالفعل!", ephemeral=True)
@@ -31,11 +40,9 @@ class TicketPanelView(discord.ui.View):
         
         channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
         
-        # زرار القفل فقط داخل الروم
-        close_view = discord.ui.View(timeout=None)
-        close_view.add_item(discord.ui.Button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.red, custom_id="close_btn"))
-        
-        await channel.send(f"أهلاً {interaction.user.mention}! انتظر الرد.", view=close_view)
+        # المنشن للرول الخاص بالإدارة
+        support_role_id = 1521078717709942835
+        await channel.send(f"أهلاً {interaction.user.mention}! <@&{support_role_id}>، الرجاء المساعدة.", view=CloseTicketView())
         await interaction.response.send_message(f"✅ تم فتح تذكرة {ticket_type}: {channel.mention}", ephemeral=True)
 
     @discord.ui.button(label="Support", style=discord.ButtonStyle.primary, emoji="🔧", custom_id="support")
@@ -50,24 +57,18 @@ class TicketPanelView(discord.ui.View):
     @discord.ui.button(label="Report", style=discord.ButtonStyle.danger, emoji="🚨", custom_id="report")
     async def report(self, button, interaction): await self.create_ticket(interaction, "report")
 
-# --- كود القفل ---
-@bot.event
-async def on_interaction(interaction):
-    if interaction.type == discord.InteractionType.component and interaction.data['custom_id'] == "close_btn":
-        await interaction.response.send_message("جاري إغلاق الروم...")
-        await interaction.channel.delete()
-    else:
-        await bot.process_application_commands(interaction)
-
+# --- تشغيل البوت وتسجيل الأزرار ---
 @bot.event
 async def on_ready():
     bot.add_view(TicketPanelView())
-    print("✅ البوت شغال والأزرار جاهزة!")
+    bot.add_view(CloseTicketView())
+    await bot.sync_commands()
+    print("✅ البوت شغال والزراير متسجلة بنجاح!")
 
-@bot.slash_command(name="setup")
+@bot.slash_command(name="setup", description="إرسال لوحة التذاكر")
 async def setup(ctx):
-    embed = discord.Embed(title="نظام التذاكر", description="اضغط الزر المناسب:", color=discord.Color.blue())
+    embed = discord.Embed(title="🎫 نظام التذاكر", description="اضغط الزر المناسب لفتح تذكرتك:", color=discord.Color.blue())
     await ctx.send(embed=embed, view=TicketPanelView())
-    await ctx.respond("تم إرسال اللوحة!", ephemeral=True)
+    await ctx.respond("تم إرسال اللوحة بنجاح!", ephemeral=True)
 
 bot.run(os.getenv('TOKEN'))
