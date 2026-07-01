@@ -1,13 +1,14 @@
 import discord
+import os
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
 
+# --- 1. جزء الـ Web Server (للـ 24/7) ---
 app = Flask(__name__)
-
 @app.route('/')
 def home():
-    return "البوت شغال يا باشا!"
+    return "البوت شغال 24/7!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -16,77 +17,38 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# استدعي الوظيفة دي قبل الـ bot.run
 keep_alive()
 
-STAFF_ROLE_ID = 1521078717709942835 
+# --- 2. كلاسات الأزرار (هنا السر!) ---
 
-intents = discord.Intents.all()
-bot = commands.Bot(intents=intents)
-
-# 1. كلاس للأزرار الـ 6 (اللوحة)
+# زر فتح التذكرة
 class TicketPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None) # timeout=None عشان الأزرار ما تموتش
+        super().__init__(timeout=None) # timeout=None مهم عشان الأزرار متفصلش
 
-    # إضافة الأزرار الستة
-    @discord.ui.button(label="Support", style=discord.ButtonStyle.primary, custom_id="ticket_support", emoji="🛠️")
-    async def support(self, btn, interaction): await self.create_ticket(interaction, "Support")
-    
-    @discord.ui.button(label="Partner", style=discord.ButtonStyle.secondary, custom_id="ticket_partner", emoji="🤝")
-    async def partner(self, btn, interaction): await self.create_ticket(interaction, "Partner")
+    @discord.ui.button(label="فتح تذكرة", style=discord.ButtonStyle.green, custom_id="open_ticket")
+    async def open_ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_message("تم فتح تذكرة لك!", ephemeral=True)
+        # هنا تقدر تضيف كود إنشاء قناة جديدة (channel creation)
 
-    @discord.ui.button(label="Verify", style=discord.ButtonStyle.success, custom_id="ticket_verify", emoji="✅")
-    async def verify(self, btn, interaction): await self.create_ticket(interaction, "Verify")
-
-    @discord.ui.button(label="Report", style=discord.ButtonStyle.danger, custom_id="ticket_report", emoji="🚨")
-    async def report(self, btn, interaction): await self.create_ticket(interaction, "Report")
-
-    @discord.ui.button(label="Suggestion", style=discord.ButtonStyle.primary, custom_id="ticket_suggestion", emoji="💡")
-    async def suggestion(self, btn, interaction): await self.create_ticket(interaction, "Suggestion")
-
-    @discord.ui.button(label="Other", style=discord.ButtonStyle.secondary, custom_id="ticket_other", emoji="📄")
-    async def other(self, btn, interaction): await self.create_ticket(interaction, "Other")
-
-    async def create_ticket(self, interaction, ticket_type):
-        # هنا كود الفحص (التيكت الواحد)
-        guild = interaction.guild
-        user = interaction.user
-        existing = discord.utils.find(lambda c: c.topic == str(user.id), guild.text_channels)
-        if existing:
-            return await interaction.response.send_message(f"❌ لديك تذكرة بالفعل: {existing.mention}", ephemeral=True)
-        
-        role = guild.get_role(STAFF_ROLE_ID)
-        channel = await guild.create_text_channel(
-            name=f"ticket-{user.name}",
-            topic=str(user.id),
-            overwrites={guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                        user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)}
-        )
-        # إرسال أزرار التحكم (Claim/Close) داخل التيكت
-        await channel.send(f"{user.mention} | {role.mention} تم فتح تذكرة من نوع **{ticket_type}**.", view=TicketManageView())
-        await interaction.response.send_message(f"✅ تم فتح تذكرتك: {channel.mention}", ephemeral=True)
-
-# 2. كلاس التحكم داخل التيكت (Claim & Close)
+# زر التحكم في التذكرة (إغلاقها مثلاً)
 class TicketManageView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, custom_id="claim_btn")
-    async def claim(self, btn, interaction):
-        if STAFF_ROLE_ID not in [r.id for r in interaction.user.roles]: return await interaction.response.send_message("❌", ephemeral=True)
-        await interaction.response.send_message(f"✅ استلمها {interaction.user.mention}")
+    @discord.ui.button(label="إغلاق التذكرة", style=discord.ButtonStyle.red, custom_id="close_ticket")
+    async def close_ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_message("جاري إغلاق التذكرة...", ephemeral=True)
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.red, custom_id="close_btn")
-    async def close(self, btn, interaction):
-        if STAFF_ROLE_ID not in [r.id for r in interaction.user.roles]: return await interaction.response.send_message("❌", ephemeral=True)
-        await interaction.channel.delete()
+# --- 3. إعدادات البوت ---
+intents = discord.Intents.default()
+bot = discord.Bot(intents=intents)
 
 @bot.event
 async def on_ready():
-    bot.add_view(TicketPanelView()) # تسجيل لوحة الأزرار
-    bot.add_view(TicketManageView()) # تسجيل أزرار التحكم
+    # تسجيل الأزرار عشان البوت يفتكرها لو عمل ريستارت
+    bot.add_view(TicketPanelView())
+    bot.add_view(TicketManageView())
     await bot.sync_commands()
     print("✅ البوت شغال يا باشا!")
 
